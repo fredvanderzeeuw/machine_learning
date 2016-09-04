@@ -138,8 +138,14 @@ debugInitializeWeights <- function(fan_out, fan_in){
 }
 
 ################################################################################
-# numgrad function
-#
+# numgrad function                                                             #
+# use = computeNumericalGradient(nnCostFunction, nn_params,input_layer_size,   #
+# hidden_layer_size, num_labels, X, y, lambda)                                 #
+# Is used to compute an estimate of the gradient to see whether gradients      #
+# calculated in backprop are reasonable.                                       #
+# output = a 1 dimensional matrix with computed gradients which can be compa-  #
+# red to the gradients computed with the cost function.                        #
+################################################################################
 computeNumericalGradient <- function(J, theta,input_layer_size, 
                                      hidden_layer_size, num_labels, X, y, lambda){
     #COMPUTENUMERICALGRADIENT Computes the gradient using "finite differences"
@@ -175,11 +181,17 @@ computeNumericalGradient <- function(J, theta,input_layer_size,
     }
     return(numgrad)
 }
-      
-
+   
 
 ################################################################################
-# checkNNGradients function
+# checkNNGradients function                                                    #
+# use = checkNNGradients(lambda)                                               #
+# Is used to check whether the function nnCostFunction returns the right grad- #
+# ients based on a small neural network that is generated within the running   #
+# checkNNGradients function.                                                   #
+# output = a printed table with gradients form the nnCostFunction and gradients#
+# that where based on estimation.                                              #
+################################################################################
 checkNNGradients <- function(lambda){
     #CHECKNNGRADIENTS Creates a small neural network to check the
     #backpropagation gradients
@@ -218,6 +230,7 @@ checkNNGradients <- function(lambda){
     # Short hand for cost function
     # octave code: costFunc = @(p) nnCostFunction(p, input_layer_size, 
     # hidden_layer_size, num_labels, X, y, lambda);
+    # no shorthand used in R!
     cost_grad <- nnCostFunction(nn_params,input_layer_size, hidden_layer_size, 
                                 num_labels, X, y, lambda)
     # octave code: [cost, grad] = costFunc(nn_params);
@@ -225,24 +238,21 @@ checkNNGradients <- function(lambda){
     grad <- cost_grad[[2]]
     
     # octave code: numgrad = computeNumericalGradient(costFunc, nn_params);
-    xxxx <- computeNumericalGradient(nnCostFunction, nn_params,input_layer_size, 
+    numgrad <- computeNumericalGradient(nnCostFunction, nn_params,input_layer_size, 
                                         hidden_layer_size, num_labels, X, y, lambda)
-    
     
     # Visually examine the two gradient computations.  The two columns
     # you get should be very similar. 
     # octave code: disp([numgrad grad]);
-    
-    
-    # fprintf(['The above two columns you get should be very similar.\n' ...
-    # '(Left-Your Numerical Gradient, Right-Analytical Gradient)\n\n']);
-    
+    print(cbind(numgrad, grad, numgrad - grad))
+    print("The 1st column is the computed gradient, 2nd is analytical, 3rd is the difference.")
+    print("The difference should be less than 1e-9")
     
     # Evaluate the norm of the difference between two solutions.  
     # If you have a correct implementation, and assuming you used EPSILON = 0.0001 
     # in computeNumericalGradient.m, then diff below should be less than 1e-9
     # octave code: diff = norm(numgrad-grad)/norm(numgrad+grad);
-    difference <- 00
+    difference <- norm(numgrad - grad, type = "2") / norm(numgrad + grad, type = "2")
     
     print("If your backpropagation implementation is correct, then the relative difference will be small")
     print("less than 1e-9")
@@ -578,6 +588,65 @@ print("Checking Backpropagation... ")
 # octave code: checkNNGradients; not initializing parameter lambda means lambda = 0
 checkNNGradients(lambda = 0) # explicitly stating lambda = 0 is more clear!
 
+
+## =================== Part 8: Training NN ===================
+#  You have now implemented all the code necessary to train a neural 
+#  network. To train your neural network, we will now use "fmincg", which
+#  is a function which works similarly to "fminunc". Recall that these
+#  advanced optimizers are able to train our cost functions efficiently as
+#  long as we provide them with the gradient computations.
+#
+print('Training Neural Network...')
+
+#  After you have completed the assignment, change the MaxIter to a larger
+#  value to see how more training helps.
+options <- optimset('MaxIter', 50);
+
+#  You should also try different values of lambda
+lambda = 1;
+
+# Create "short hand" for the cost function to be minimized
+costFunction = @(p) nnCostFunction(p, ...
+                                   input_layer_size, ...
+                                   hidden_layer_size, ...
+                                   num_labels, X, y, lambda);
+
+# Now, costFunction is a function that takes in only one argument (the
+# neural network parameters)
+[nn_params, cost] = fmincg(costFunction, initial_nn_params, options);
+
+# Obtain Theta1 and Theta2 back from nn_params
+Theta1 = reshape(nn_params(1:hidden_layer_size * (input_layer_size + 1)), ...
+                 hidden_layer_size, (input_layer_size + 1));
+
+Theta2 = reshape(nn_params((1 + (hidden_layer_size * (input_layer_size + 1))):end), ...
+                 num_labels, (hidden_layer_size + 1));
+
+fprintf('Program paused. Press enter to continue.\n');
+pause;
+
+
+## ================= Part 9: Visualize Weights =================
+#  You can now "visualize" what the neural network is learning by 
+#  displaying the hidden units to see what features they are capturing in 
+#  the data.
+
+fprintf('\nVisualizing Neural Network... \n')
+
+displayData(Theta1(:, 2:end));
+
+fprintf('\nProgram paused. Press enter to continue.\n');
+pause;
+
+## ================= Part 10: Implement Predict =================
+#  After training the neural network, we would like to use it to predict
+#  the labels. You will now implement the "predict" function to use the
+#  neural network to predict the labels of the training set. This lets
+#  you compute the training set accuracy.
+
+pred = predict(Theta1, Theta2, X);
+
+fprintf('\nTraining Set Accuracy: #f\n', mean(double(pred == y)) * 100);
 
 
 

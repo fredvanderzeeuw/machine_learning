@@ -96,11 +96,14 @@ while ~isempty(email_contents)
     % Note: You can use strcmp(str1, str2) to compare two strings (str1 and
     %       str2). It will return 1 only if the two strings are equivalent.
     %
-
-
-
-
-
+    % Check if the current string 'str' which is stemmed also occurs in the
+    % vocabulary list with words that are a feature in denoting spam / non spam.
+    match = strcmp(str, vocabList);
+    if (sum(match) > 0)
+      % find the match with a vector of 0 and 1 where 1 denotes match
+      word_indices = [word_indices ; find(match);];
+    end;
+    
 
 
 
