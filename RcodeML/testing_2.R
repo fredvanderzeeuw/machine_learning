@@ -22,7 +22,7 @@
 # initialize 
 # octave code: clear ; close all; clc
 rm(list = ls())
-# load library to read matlab files
+# load library to read matlab data files
 library(R.matlab)
 
 
@@ -525,7 +525,6 @@ J <- nnCostFunction(nn_params, input_layer_size, hidden_layer_size, num_labels, 
 print("Cost at parameters (loaded from ex4weights) value should be about 0.287629")
 print(J)
 
-
 # =============== Part 4: Implement Regularization ===============
 # Once your cost function implementation is correct, you should now
 # continue to implement the regularization with the cost.
@@ -600,7 +599,7 @@ print('Training Neural Network...')
 
 #  After you have completed the assignment, change the MaxIter to a larger
 #  value to see how more training helps.
-options <- optimset('MaxIter', 50);
+options <- optimset('MaxIter', 50); <-----------------------------------------------------
 
 #  You should also try different values of lambda
 lambda = 1;
@@ -615,6 +614,38 @@ costFunction = @(p) nnCostFunction(p, ...
 # neural network parameters)
 [nn_params, cost] = fmincg(costFunction, initial_nn_params, options);
 
+
+####################################################################################################
+library(optimx)
+
+costFun <- nnCost(nn_params = initial_nn_params,
+                  input_layer_size = input_layer_size,
+                  hidden_layer_size = hidden_layer_size,
+                  num_labels = num_labels,
+                  X = X, y = y, lambda = lambda)
+
+optim(initial_nn_params, fn=nnCost_short, method = c("L-BFGS-B"), control = c("maxit = 50"))
+
+for(i in 1:100){
+    par_s <- initial_nn_params - i* 0.01
+    print(nnCost_short(par_s))
+}
+
+
+
+mydat <- rnorm(100, 5, 20)
+
+ll <- function(pars, dat){
+    -sum(dnorm(dat, pars[1], pars[2], log = TRUE))
+}
+
+optimx(c(5, 20), ll, dat = mydat)
+# The 'true' MLEs
+mean(mydat)
+sqrt(var(mydat)*(99/100))
+
+
+####################################################################################################
 # Obtain Theta1 and Theta2 back from nn_params
 Theta1 = reshape(nn_params(1:hidden_layer_size * (input_layer_size + 1)), ...
                  hidden_layer_size, (input_layer_size + 1));
@@ -658,9 +689,480 @@ fprintf('\nTraining Set Accuracy: #f\n', mean(double(pred == y)) * 100);
 
 
 #################################################################################################
+################################################################################
+# nnCost function                                                              #
+# use = nnCost(nn_params, input_layer_size, hidden_layer_size,                 #
+# num_labels, X, y, lambda)                                                    #
+# output = a list with the cost (one value) for Theta1 and Theta2              #
+# test: J <- nnCost(nn_params, input_layer_size, hidden_layer_size,            #
+# num_labels, X, y, lambda)                                                    #
+################################################################################
+nnCost <- function(nn_params, input_layer_size, hidden_layer_size, 
+                           num_labels, X, y, lambda){
+    # NNCOSTFUNCTION Implements the neural network cost function for a two layer
+    # neural network which performs classification
+    #    [J grad] = NNCOSTFUNCTON(nn_params, hidden_layer_size, num_labels, ...
+    #    X, y, lambda) computes the cost and gradient of the neural network. The
+    #    parameters for the neural network are "unrolled" into the vector
+    #    nn_params and need to be converted back into the weight matrices. 
+    #  
+    #    The returned parameter grad should be a "unrolled" vector of the
+    #    partial derivatives of the neural network.
+    # 
+    # 
+    # Reshape nn_params back into the parameters Theta1 and Theta2, the weight matrices
+    # for our 2 layer neural network
+    # octave code: Theta1 = reshape(nn_params(1:hidden_layer_size * (input_layer_size + 1)), ...
+    #                  hidden_layer_size, (input_layer_size + 1));
+    Theta1 <- matrix(nn_params[1:(hidden_layer_size * (input_layer_size + 1))],
+                     hidden_layer_size,(input_layer_size + 1))
+    # octave code: Theta2 = reshape(nn_params((1 + (hidden_layer_size * (input_layer_size + 1))):end), ...
+    #                  num_labels, (hidden_layer_size + 1));
+    Theta2 <- matrix(nn_params[(1+(hidden_layer_size * (input_layer_size + 1))):length(nn_params)],
+                     num_labels,(hidden_layer_size + 1))
+    
+    #  Setup some useful variables
+    m <- nrow(X)
+    # 
+    #  You need to return the following variables correctly 
+    J <- 0
+    # octave code: Theta1_grad = zeros(size(Theta1));
+    Theta1_grad <- matrix(0,nrow(Theta1), ncol(Theta1))
+    # octave code: Theta2_grad = zeros(size(Theta2));
+    Theta2_grad <- matrix(0,nrow(Theta2), ncol(Theta2))
+    
+    #  ====================== YOUR CODE HERE ======================
+    #      Instructions: You should complete the code by working through the
+    #                following parts.
+    # 
+    #  Part 1: Feedforward the neural network and return the cost in the
+    #          variable J. After implementing Part 1, you can verify that your
+    #          cost function computation is correct by verifying the cost
+    #          computed in ex4.m
+    # 
+    #  input layer size = number of units in inout layer x1 --- xn
+    #  hidden_layer_size = number of units in hidden layers a1 --- an
+    #  num_labels = number of outputs a1 --- an is h(x)1 --- h(x)n
+    # 
+    # 
+    #  Expand the 'y' output values into a matrix of single values
+    # octave code: y_matrix = eye(num_labels)(y,:);
+    y_matrix <- matrix(0,length(y),num_labels)
+    for(i in 1:length(y)){y_matrix[i,y[i]] <- 1}
+    
+    #  a1 equals the X input matrix with a column of 1's added (bias units) as the first column.
+    # octave c0de: A1 = [ones(m, 1) X];
+    A1 <- cbind(matrix(1,m,1),X)
+    #  z2 equals the product of a1 and Theta1 (Theta transpose for product)
+    # octave code: Z2 = A1 * Theta1';
+    Z2 <- A1 %*% t(Theta1)
+    
+    #  a2 is the result of passing z2 through g()
+    # octave code: A2 = [ones(size(Z2, 1), 1) sigmoid(Z2)];
+    A2 <- cbind(matrix(1,nrow(Z2),1), sigmoid(Z2))
+    #  z3 equals product of a2 theta 2 (theta transposed for product)
+    # octave code: Z3 = A2*Theta2';
+    Z3 <- A2 %*% t(Theta2)
+    
+    
+    #  H(X) = A3 = sigmoid of Z3 and is the ouput of forward propagation
+    # octave code: H = A3 = sigmoid(Z3);
+    H <- A3 <- sigmoid(Z3)
+    
+    #  cost Function, non-regularized:
+    #  Compute the unregularized cost according to ex4.pdf (top of Page 5), using a3,
+    #  your y_matrix, and m (the number of training examples). Note that the 'h' 
+    #  argument inside the log() function is exactly a3. Cost should be a scalar value. 
+    #  Since y_matrix and a3 are both matrices, you need to compute the double-sum.
+    # 
+    #  Remember to use element-wise multiplication with the log() function. 
+    #  Also, we're using the natural log, not log10().
+    # 
+    #  Now you can run ex4.m to check the unregularized cost is correct, then you can 
+    #  submit this portion to the grader.
+    # 
+    #  calculate unregularized cost and note that sum( xxxxx, 2) -> 2 is dimension of
+    #  summation!
+    # octave code: J = (1/m)*sum(sum((-y_matrix).*log(H) - (1-y_matrix).*log(1-H), 2));
+    J = (1/m) * sum(sum((-y_matrix)*log(H) - (1-y_matrix)*log(1-H), 2))
+    
+    #  calculate penalty
+    # octave code: penalty = (lambda/(2*m))*(sum(sum(Theta1(:, 2:end).^2, 2)) + sum(sum(Theta2(:,2:end).^2, 2)));
+    penalty = (lambda/(2*m))*(sum(colSums(Theta1[, 2:ncol(Theta1)]^2)) + sum(colSums(Theta2[, 2:ncol(Theta2)]^2)))
+    
+    #  add up cost and regularization
+    J = J + penalty;
+
+    return(J)
+}
+
+################################################################################
+# nnGrad function                                                              #
+# use = nnCostFunction(nn_params, input_layer_size, hidden_layer_size,         #
+# num_labels, X, y, lambda)                                                    #
+# output = an unrolled vector of gradients for Theta1 and Theta2               #
+# test: J <- nnGrad(nn_params, input_layer_size, hidden_layer_size,            #
+# num_labels, X, y, lambda)                                                    #
+################################################################################
+nnGrad <- function(nn_params, input_layer_size, hidden_layer_size, 
+                           num_labels, X, y, lambda){
+    # NNCOSTFUNCTION Implements the neural network cost function for a two layer
+    # neural network which performs classification
+    #    [J grad] = NNCOSTFUNCTON(nn_params, hidden_layer_size, num_labels, ...
+    #    X, y, lambda) computes the cost and gradient of the neural network. The
+    #    parameters for the neural network are "unrolled" into the vector
+    #    nn_params and need to be converted back into the weight matrices. 
+    #  
+    #    The returned parameter grad should be a "unrolled" vector of the
+    #    partial derivatives of the neural network.
+    # 
+    # 
+    # Reshape nn_params back into the parameters Theta1 and Theta2, the weight matrices
+    # for our 2 layer neural network
+    # octave code: Theta1 = reshape(nn_params(1:hidden_layer_size * (input_layer_size + 1)), ...
+    #                  hidden_layer_size, (input_layer_size + 1));
+    Theta1 <- matrix(nn_params[1:(hidden_layer_size * (input_layer_size + 1))],
+                     hidden_layer_size,(input_layer_size + 1))
+    # octave code: Theta2 = reshape(nn_params((1 + (hidden_layer_size * (input_layer_size + 1))):end), ...
+    #                  num_labels, (hidden_layer_size + 1));
+    Theta2 <- matrix(nn_params[(1+(hidden_layer_size * (input_layer_size + 1))):length(nn_params)],
+                     num_labels,(hidden_layer_size + 1))
+    
+    #  Setup some useful variables
+    m <- nrow(X)
+    # 
+    #  You need to return the following variables correctly 
+    J <- 0
+    # octave code: Theta1_grad = zeros(size(Theta1));
+    Theta1_grad <- matrix(0,nrow(Theta1), ncol(Theta1))
+    # octave code: Theta2_grad = zeros(size(Theta2));
+    Theta2_grad <- matrix(0,nrow(Theta2), ncol(Theta2))
+    
+    #  ====================== YOUR CODE HERE ======================
+    #      Instructions: You should complete the code by working through the
+    #                following parts.
+    # 
+    #  Part 1: Feedforward the neural network and return the cost in the
+    #          variable J. After implementing Part 1, you can verify that your
+    #          cost function computation is correct by verifying the cost
+    #          computed in ex4.m
+    # 
+    #  input layer size = number of units in inout layer x1 --- xn
+    #  hidden_layer_size = number of units in hidden layers a1 --- an
+    #  num_labels = number of outputs a1 --- an is h(x)1 --- h(x)n
+    # 
+    # 
+    #  Expand the 'y' output values into a matrix of single values
+    # octave code: y_matrix = eye(num_labels)(y,:);
+    y_matrix <- matrix(0,length(y),num_labels)
+    for(i in 1:length(y)){y_matrix[i,y[i]] <- 1}
+    
+    #  a1 equals the X input matrix with a column of 1's added (bias units) as the first column.
+    # octave c0de: A1 = [ones(m, 1) X];
+    A1 <- cbind(matrix(1,m,1),X)
+    #  z2 equals the product of a1 and Theta1 (Theta transpose for product)
+    # octave code: Z2 = A1 * Theta1';
+    Z2 <- A1 %*% t(Theta1)
+    
+    #  a2 is the result of passing z2 through g()
+    # octave code: A2 = [ones(size(Z2, 1), 1) sigmoid(Z2)];
+    A2 <- cbind(matrix(1,nrow(Z2),1), sigmoid(Z2))
+    #  z3 equals product of a2 theta 2 (theta transposed for product)
+    # octave code: Z3 = A2*Theta2';
+    Z3 <- A2 %*% t(Theta2)
+    
+    
+    #  H(X) = A3 = sigmoid of Z3 and is the ouput of forward propagation
+    # octave code: H = A3 = sigmoid(Z3);
+    H <- A3 <- sigmoid(Z3)
+    
+    #  Part 2: Implement the backpropagation algorithm to compute the gradients
+    #          Theta1_grad and Theta2_grad. You should return the partial derivatives of
+    #          the cost function with respect to Theta1 and Theta2 in Theta1_grad and
+    #          Theta2_grad, respectively. After implementing Part 2, you can check
+    #          that your implementation is correct by running checkNNGradients
+    # 
+    #          Note: The vector y passed into the function is a vector of labels
+    #                containing values from 1..K. You need to map this vector into a 
+    #                binary vector of 1's and 0's to be used with the neural network
+    #                cost function.
+    # 
+    #          Hint: We recommend implementing backpropagation using a for-loop
+    #                over the training examples if you are implementing it for the 
+    #                first time.
+    
+    #  d3 is the difference between a3 and the y_matrix. The dimensions are the same 
+    #  as both, (m x r).
+    d3 = A3 - y_matrix;
+    
+    #  z2 came from the forward propagation process - it's the product of a1 and Theta1, 
+    #  prior to applying the sigmoid() function. Dimensions = (m x n) (n x h) --> (m x h)
+    # octave code: d2 = (d3*Theta2 .* sigmoidGradient([ones(size(Z2, 1), 1) Z2]))(:, 2:end);
+    # This can be done in one line of code but to be more clear lets cut it up in multiple
+    # lines and peace it together.
+    # first compute the matrix multiplication of d3 time theta
+    d2 <- d3 %*% Theta2 
+    # multiply by sigmoidgradient of Z2 with added ones in column 1 (cbind) = bias
+    d2 <- d2 * sigmoidGradient(cbind(matrix(1, nrow(Z2), 1), Z2))
+    # delete the first column (bias) to get final d2
+    d2 <- d2[,2:ncol(d2)]
+    
+    # compute D1 by transpose d2 matrix multiply by A1
+    # octave code: D1 = d2'*A1;
+    D1 = t(d2) %*% A1
+    D2 = t(d3) %*% A2
+    
+    
+    #  Part 3: Implement regularization with the cost function and gradients.
+    # 
+    #          Hint: You can implement this around the code for
+    #                backpropagation. That is, you can compute the gradients for
+    #                the regularization separately and then add them to Theta1_grad
+    #                and Theta2_grad from Part 2.
+    # 
+    # octave code: Theta1_grad = D1./m + (lambda/m)*[zeros(size(Theta1,1), 1) Theta1(:, 2:end)];
+    Theta1_grad = D1/m + ((lambda/m) * cbind(matrix(0,nrow(Theta1),1), Theta1[, 2:ncol(Theta1)]))
+    # octave code: Theta2_grad = D2./m + (lambda/m)*[zeros(size(Theta2,1), 1) Theta2(:, 2:end)];
+    Theta2_grad = D2/m + ((lambda/m) * cbind(matrix(0,nrow(Theta2),1), Theta2[, 2:ncol(Theta2)]))
+    
+    #  =========================================================================
+    # 
+    #  Unroll gradients
+    # ocatve coce: grad = [Theta1_grad(:) ; Theta2_grad(:)];
+    grad <- c(c(Theta1_grad), c(Theta2_grad))
+    return(grad)
+}
+################################################################################
+nnCost_short <- function(nn_params){
+    # NNCOSTFUNCTION Implements the neural network cost function for a two layer
+    # neural network which performs classification
+    #    [J grad] = NNCOSTFUNCTON(nn_params, hidden_layer_size, num_labels, ...
+    #    X, y, lambda) computes the cost and gradient of the neural network. The
+    #    parameters for the neural network are "unrolled" into the vector
+    #    nn_params and need to be converted back into the weight matrices. 
+    #  
+    #    The returned parameter grad should be a "unrolled" vector of the
+    #    partial derivatives of the neural network.
+    # 
+    # 
+    # Reshape nn_params back into the parameters Theta1 and Theta2, the weight matrices
+    # for our 2 layer neural network
+    # octave code: Theta1 = reshape(nn_params(1:hidden_layer_size * (input_layer_size + 1)), ...
+    #                  hidden_layer_size, (input_layer_size + 1));
+    Theta1 <- matrix(nn_params[1:(hidden_layer_size * (input_layer_size + 1))],
+                     hidden_layer_size,(input_layer_size + 1))
+    # octave code: Theta2 = reshape(nn_params((1 + (hidden_layer_size * (input_layer_size + 1))):end), ...
+    #                  num_labels, (hidden_layer_size + 1));
+    Theta2 <- matrix(nn_params[(1+(hidden_layer_size * (input_layer_size + 1))):length(nn_params)],
+                     num_labels,(hidden_layer_size + 1))
+    
+    #  Setup some useful variables
+    m <- nrow(X)
+    # 
+    #  You need to return the following variables correctly 
+    J <- 0
+    # octave code: Theta1_grad = zeros(size(Theta1));
+    Theta1_grad <- matrix(0,nrow(Theta1), ncol(Theta1))
+    # octave code: Theta2_grad = zeros(size(Theta2));
+    Theta2_grad <- matrix(0,nrow(Theta2), ncol(Theta2))
+    
+    #  ====================== YOUR CODE HERE ======================
+    #      Instructions: You should complete the code by working through the
+    #                following parts.
+    # 
+    #  Part 1: Feedforward the neural network and return the cost in the
+    #          variable J. After implementing Part 1, you can verify that your
+    #          cost function computation is correct by verifying the cost
+    #          computed in ex4.m
+    # 
+    #  input layer size = number of units in inout layer x1 --- xn
+    #  hidden_layer_size = number of units in hidden layers a1 --- an
+    #  num_labels = number of outputs a1 --- an is h(x)1 --- h(x)n
+    # 
+    # 
+    #  Expand the 'y' output values into a matrix of single values
+    # octave code: y_matrix = eye(num_labels)(y,:);
+    y_matrix <- matrix(0,length(y),num_labels)
+    for(i in 1:length(y)){y_matrix[i,y[i]] <- 1}
+    
+    #  a1 equals the X input matrix with a column of 1's added (bias units) as the first column.
+    # octave c0de: A1 = [ones(m, 1) X];
+    A1 <- cbind(matrix(1,m,1),X)
+    #  z2 equals the product of a1 and Theta1 (Theta transpose for product)
+    # octave code: Z2 = A1 * Theta1';
+    Z2 <- A1 %*% t(Theta1)
+    
+    #  a2 is the result of passing z2 through g()
+    # octave code: A2 = [ones(size(Z2, 1), 1) sigmoid(Z2)];
+    A2 <- cbind(matrix(1,nrow(Z2),1), sigmoid(Z2))
+    #  z3 equals product of a2 theta 2 (theta transposed for product)
+    # octave code: Z3 = A2*Theta2';
+    Z3 <- A2 %*% t(Theta2)
+    
+    
+    #  H(X) = A3 = sigmoid of Z3 and is the ouput of forward propagation
+    # octave code: H = A3 = sigmoid(Z3);
+    H <- A3 <- sigmoid(Z3)
+    
+    #  cost Function, non-regularized:
+    #  Compute the unregularized cost according to ex4.pdf (top of Page 5), using a3,
+    #  your y_matrix, and m (the number of training examples). Note that the 'h' 
+    #  argument inside the log() function is exactly a3. Cost should be a scalar value. 
+    #  Since y_matrix and a3 are both matrices, you need to compute the double-sum.
+    # 
+    #  Remember to use element-wise multiplication with the log() function. 
+    #  Also, we're using the natural log, not log10().
+    # 
+    #  Now you can run ex4.m to check the unregularized cost is correct, then you can 
+    #  submit this portion to the grader.
+    # 
+    #  calculate unregularized cost and note that sum( xxxxx, 2) -> 2 is dimension of
+    #  summation!
+    # octave code: J = (1/m)*sum(sum((-y_matrix).*log(H) - (1-y_matrix).*log(1-H), 2));
+    J = (1/m) * sum(sum((-y_matrix)*log(H) - (1-y_matrix)*log(1-H), 2))
+    
+    #  calculate penalty
+    # octave code: penalty = (lambda/(2*m))*(sum(sum(Theta1(:, 2:end).^2, 2)) + sum(sum(Theta2(:,2:end).^2, 2)));
+    penalty = (lambda/(2*m))*(sum(colSums(Theta1[, 2:ncol(Theta1)]^2)) + sum(colSums(Theta2[, 2:ncol(Theta2)]^2)))
+    
+    #  add up cost and regularization
+    J = J + penalty;
+    
+    return(J)
+}
+################################################################################
+nnGrad_short <- function(nn_params){
+    # NNCOSTFUNCTION Implements the neural network cost function for a two layer
+    # neural network which performs classification
+    #    [J grad] = NNCOSTFUNCTON(nn_params, hidden_layer_size, num_labels, ...
+    #    X, y, lambda) computes the cost and gradient of the neural network. The
+    #    parameters for the neural network are "unrolled" into the vector
+    #    nn_params and need to be converted back into the weight matrices. 
+    #  
+    #    The returned parameter grad should be a "unrolled" vector of the
+    #    partial derivatives of the neural network.
+    # 
+    # 
+    # Reshape nn_params back into the parameters Theta1 and Theta2, the weight matrices
+    # for our 2 layer neural network
+    # octave code: Theta1 = reshape(nn_params(1:hidden_layer_size * (input_layer_size + 1)), ...
+    #                  hidden_layer_size, (input_layer_size + 1));
+    Theta1 <- matrix(nn_params[1:(hidden_layer_size * (input_layer_size + 1))],
+                     hidden_layer_size,(input_layer_size + 1))
+    # octave code: Theta2 = reshape(nn_params((1 + (hidden_layer_size * (input_layer_size + 1))):end), ...
+    #                  num_labels, (hidden_layer_size + 1));
+    Theta2 <- matrix(nn_params[(1+(hidden_layer_size * (input_layer_size + 1))):length(nn_params)],
+                     num_labels,(hidden_layer_size + 1))
+    
+    #  Setup some useful variables
+    m <- nrow(X)
+    # 
+    #  You need to return the following variables correctly 
+    J <- 0
+    # octave code: Theta1_grad = zeros(size(Theta1));
+    Theta1_grad <- matrix(0,nrow(Theta1), ncol(Theta1))
+    # octave code: Theta2_grad = zeros(size(Theta2));
+    Theta2_grad <- matrix(0,nrow(Theta2), ncol(Theta2))
+    
+    #  ====================== YOUR CODE HERE ======================
+    #      Instructions: You should complete the code by working through the
+    #                following parts.
+    # 
+    #  Part 1: Feedforward the neural network and return the cost in the
+    #          variable J. After implementing Part 1, you can verify that your
+    #          cost function computation is correct by verifying the cost
+    #          computed in ex4.m
+    # 
+    #  input layer size = number of units in inout layer x1 --- xn
+    #  hidden_layer_size = number of units in hidden layers a1 --- an
+    #  num_labels = number of outputs a1 --- an is h(x)1 --- h(x)n
+    # 
+    # 
+    #  Expand the 'y' output values into a matrix of single values
+    # octave code: y_matrix = eye(num_labels)(y,:);
+    y_matrix <- matrix(0,length(y),num_labels)
+    for(i in 1:length(y)){y_matrix[i,y[i]] <- 1}
+    
+    #  a1 equals the X input matrix with a column of 1's added (bias units) as the first column.
+    # octave c0de: A1 = [ones(m, 1) X];
+    A1 <- cbind(matrix(1,m,1),X)
+    #  z2 equals the product of a1 and Theta1 (Theta transpose for product)
+    # octave code: Z2 = A1 * Theta1';
+    Z2 <- A1 %*% t(Theta1)
+    
+    #  a2 is the result of passing z2 through g()
+    # octave code: A2 = [ones(size(Z2, 1), 1) sigmoid(Z2)];
+    A2 <- cbind(matrix(1,nrow(Z2),1), sigmoid(Z2))
+    #  z3 equals product of a2 theta 2 (theta transposed for product)
+    # octave code: Z3 = A2*Theta2';
+    Z3 <- A2 %*% t(Theta2)
+    
+    
+    #  H(X) = A3 = sigmoid of Z3 and is the ouput of forward propagation
+    # octave code: H = A3 = sigmoid(Z3);
+    H <- A3 <- sigmoid(Z3)
+    
+    #  Part 2: Implement the backpropagation algorithm to compute the gradients
+    #          Theta1_grad and Theta2_grad. You should return the partial derivatives of
+    #          the cost function with respect to Theta1 and Theta2 in Theta1_grad and
+    #          Theta2_grad, respectively. After implementing Part 2, you can check
+    #          that your implementation is correct by running checkNNGradients
+    # 
+    #          Note: The vector y passed into the function is a vector of labels
+    #                containing values from 1..K. You need to map this vector into a 
+    #                binary vector of 1's and 0's to be used with the neural network
+    #                cost function.
+    # 
+    #          Hint: We recommend implementing backpropagation using a for-loop
+    #                over the training examples if you are implementing it for the 
+    #                first time.
+    
+    #  d3 is the difference between a3 and the y_matrix. The dimensions are the same 
+    #  as both, (m x r).
+    d3 = A3 - y_matrix;
+    
+    #  z2 came from the forward propagation process - it's the product of a1 and Theta1, 
+    #  prior to applying the sigmoid() function. Dimensions = (m x n) (n x h) --> (m x h)
+    # octave code: d2 = (d3*Theta2 .* sigmoidGradient([ones(size(Z2, 1), 1) Z2]))(:, 2:end);
+    # This can be done in one line of code but to be more clear lets cut it up in multiple
+    # lines and peace it together.
+    # first compute the matrix multiplication of d3 time theta
+    d2 <- d3 %*% Theta2 
+    # multiply by sigmoidgradient of Z2 with added ones in column 1 (cbind) = bias
+    d2 <- d2 * sigmoidGradient(cbind(matrix(1, nrow(Z2), 1), Z2))
+    # delete the first column (bias) to get final d2
+    d2 <- d2[,2:ncol(d2)]
+    
+    # compute D1 by transpose d2 matrix multiply by A1
+    # octave code: D1 = d2'*A1;
+    D1 = t(d2) %*% A1
+    D2 = t(d3) %*% A2
+    
+    
+    #  Part 3: Implement regularization with the cost function and gradients.
+    # 
+    #          Hint: You can implement this around the code for
+    #                backpropagation. That is, you can compute the gradients for
+    #                the regularization separately and then add them to Theta1_grad
+    #                and Theta2_grad from Part 2.
+    # 
+    # octave code: Theta1_grad = D1./m + (lambda/m)*[zeros(size(Theta1,1), 1) Theta1(:, 2:end)];
+    Theta1_grad = D1/m + ((lambda/m) * cbind(matrix(0,nrow(Theta1),1), Theta1[, 2:ncol(Theta1)]))
+    # octave code: Theta2_grad = D2./m + (lambda/m)*[zeros(size(Theta2,1), 1) Theta2(:, 2:end)];
+    Theta2_grad = D2/m + ((lambda/m) * cbind(matrix(0,nrow(Theta2),1), Theta2[, 2:ncol(Theta2)]))
+    
+    #  =========================================================================
+    # 
+    #  Unroll gradients
+    # ocatve coce: grad = [Theta1_grad(:) ; Theta2_grad(:)];
+    grad <- c(c(Theta1_grad), c(Theta2_grad))
+    return(grad)
+}
+
+
+
+
 # test stuff
-
-
 library(ggplot2)
 plot_image <- function(row) {
     photo <- data.frame( x=rep(1:20,times=20), y=rep(20:1,each=20), shade=as.numeric(sel[row,]))
