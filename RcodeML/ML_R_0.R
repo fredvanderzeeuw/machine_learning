@@ -218,3 +218,6 @@ table(ird$species[-samp], labels.nnet)
 # accuracy
 mean(ird$species[-samp] == labels.nnet)
 # 0.96
+
+
+# deze code is veranderd
